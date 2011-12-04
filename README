@@ -1,0 +1,3 @@
+Paxos implementation with Erlang.
+
+Use 'rebar compile eunit' to compile code and run tests
