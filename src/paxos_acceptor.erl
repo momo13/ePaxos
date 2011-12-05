@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([prepare/3, accept/4]).
+-export([prepare/3, accept/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -21,44 +21,43 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--record(state, {paxosID, promisedProposal, acceptedProposal, acceptedVal}).
+-record(state, {paxos_id, promised_proposal, accepted_proposal, accepted_val}).
 
-%%TODO: macke both prepare and accept asynchronous
-prepare(AcceptorPID, PaxosID, ProposalID) ->
-    gen_server:call(AcceptorPID, {prepare, PaxosID, ProposalID}). 
+prepare(AcceptorPID, ProposerPID, PrepareMessage) ->
+    gen_server:cast(AcceptorPID, {prepare, ProposerPID, PrepareMessage}). 
 
-accept(AcceptorPID, PaxosID, ProposalID, Value) ->
-    gen_server:call(AcceptorPID, {accept, PaxosID, ProposalID, Value}).
+accept(AcceptorPID, ProposerPID, AcceptMessage) ->
+    gen_server:cast(AcceptorPID, {accept, ProposerPID, AcceptMessage}).
 
 
-init([PaxosID]) ->
-    {ok, #state{paxosID = PaxosID, promisedProposal = -1, acceptedProposal = -1, acceptedVal = nil}}.
+init([ PaxosID ]) ->
+    {ok, #state{paxos_id = PaxosID, promised_proposal = -1, accepted_proposal = -1, accepted_val = nil}}.
 
-handle_call({_, PaxosID, _}, _From, #state{paxosID = PID} = State) when PID /= PaxosID ->
-    Reply = reject,
-    {reply, Reply, State};
 
-handle_call({prepare, _PaxosID, ProposalID}, _From, #state{promisedProposal = PP} = State) when ProposalID =< PP ->
-    Reply = reject,
-    {reply, Reply, State};
-handle_call({prepare, _PaxosID, ProposalID}, _From, State) ->
-    Reply = {promise, State#state.acceptedProposal, State#state.acceptedVal},
-%%% TODO: make permanent. Store on disk!
-    {reply, Reply, State#state{promisedProposal = ProposalID}};
-
-handle_call({accept, _PaxosID, ProposalID, _Value}, _From, #state{promisedProposal = PP} = State) when ProposalID =< PP ->
-    Reply = reject,
-    {reply, Reply, State};
-handle_call({accept, _PaxosID, ProposalID, Value}, _From, State)  ->
-    Reply = accept,
-    {reply, Reply, State#state{acceptedProposal = ProposalID, acceptedVal = Value}};
+handle_cast({prepare, _ProposerPID, PrepareMessage}, State) when PrepareMessage#prepare_message.paxos_id /= State#state.paxos_id ->
+    %% TODO: optimize send reject
+    {noreply, State};
+handle_cast({prepare, _ProposerPID, PrepareMessage}, State) when PrepareMessage#prepare_message.proposal_id =< State#state.promised_proposal ->
+    %% TODO: optimize send reject
+    {noreply, State};
+handle_cast({prepare, ProposerPID, PrepareMessage}, State) ->
+    Reply = {promise, State#state.accepted_proposal, State#state.accepted_val},
+    %%% TODO: make permanent. Store on disk!
+    ProposerPID ! Reply,
+    {noreply, State#state{promised_proposal = PrepareMessage#prepare_message.proposal_id}};
+handle_cast({accept, _ProposerPID, AcceptMessage}, State) when AcceptMessage#accept_message.paxos_id /= State#state.paxos_id ->
+    %% TODO: optimize send reject
+    {noreply, State};
+handle_cast({accept, _ProposerPID, AcceptMessage}, State) when AcceptMessage#accept_message.proposal_id =< State#state.promised_proposal ->
+    %% TODO: optimize send reject
+    {noreply, State};
+handle_cast({accept, ProposerPID, #accept_message{proposal_id = Pid, value = Value}}, State) ->
+    ProposerPID ! {accept, Pid},
+    {noreply, State#state{accepted_proposal = Pid, accepted_val = Value}}.
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -72,25 +71,52 @@ code_change(_OldVsn, State, _Extra) ->
 	
 -ifdef(TEST).
 
-reject_any_message_with_wrong_paxosID_test() ->
-    State = #state{paxosID = 1, promisedProposal = 2, acceptedProposal = -1, acceptedVal = nil},
-    lists:foreach( fun(MessageType) ->
-			   ?assertEqual({reply, reject, State}, handle_call({MessageType, 2, 1}, sender, State)) end, [prepare, accept]).
+equality(Message, Message) ->
+    true;
+equality(_, _) ->
+    false.
+
+test_receiver(ExpectedMessage, Tester) ->
+    spawn(fun() ->
+		  receive
+		      Message ->
+			  Tester ! equality(ExpectedMessage, Message)
+		  end
+	  end).
+    
+
+reject_a_proposal_message_with_wrong_paxosID_test() ->
+    State = #state{paxos_id = 1, promised_proposal = 2, accepted_proposal = -1, accepted_val = nil},
+    ?assertEqual({noreply, State}, handle_cast({prepare, self(), #prepare_message{ paxos_id = 2 }}, State)).
+
+reject_an_accept_message_with_wrong_paxosID_test() ->
+    State = #state{paxos_id = 1, promised_proposal = 2, accepted_proposal = -1, accepted_val = nil},
+    ?assertEqual({noreply, State}, handle_cast({accept, self(), #accept_message{ paxos_id = 2 }}, State)).
 
 reject_prepare_with_smaller_proposal_number_test() ->
-    State = #state{paxosID = 1, promisedProposal = 2, acceptedProposal = -1, acceptedVal = nil},
-    ?assertEqual({reply, reject, State}, handle_call({prepare, 1, 1}, sender, State)).
+    State = #state{paxos_id = 1, promised_proposal = 2, accepted_proposal = -1, accepted_val = nil},
+    ?assertEqual({noreply, State}, handle_cast({prepare, self(), #prepare_message{ paxos_id = 1, proposal_id = 1 }}, State)).
 
 reject_prepare_with_equal_proposal_number_test() ->
-    State = #state{paxosID = 1, promisedProposal = 2, acceptedProposal = -1, acceptedVal = nil},
-    ?assertEqual({reply, reject, State}, handle_call({prepare, 1, 2}, sender, State)).
+    State = #state{paxos_id = 1, promised_proposal = 2, accepted_proposal = -1, accepted_val = nil},
+    ?assertEqual({noreply, State}, handle_cast({prepare, self(), #prepare_message{ paxos_id = 1, proposal_id = 2 }}, State)).
 
 promise_prepare_with_greater_proposal_number_test() ->
-    State = #state{paxosID = 1, promisedProposal = 2, acceptedProposal = -1, acceptedVal = nil},
-    ?assertEqual({reply, {promise, -1, nil}, State#state{promisedProposal = 3}}, handle_call({prepare, 1, 3}, sender, State)).
+    State = #state{paxos_id = 1, promised_proposal = 2, accepted_proposal = -1, accepted_val = nil},
+    TestReceiver = test_receiver({promise, State#state.accepted_proposal, State#state.accepted_val}, self()),
+    ?assertEqual({noreply, State#state{promised_proposal = 3}}, handle_cast({prepare, TestReceiver, #prepare_message{ paxos_id = 1, proposal_id = 3 }}, State)),
+    TestResult = receive
+		     TResult -> TResult
+		 end,
+    ?assert(TestResult).
 
 promise_prepare_with_greater_proposal_number_send_accepted_value_test() ->
-    State = #state{paxosID = 1, promisedProposal = 2, acceptedProposal = 1, acceptedVal = 9},
-    ?assertEqual({reply, {promise, 1, 9}, State#state{promisedProposal = 3}}, handle_call({prepare, 1, 3}, sender, State)).
+    State = #state{paxos_id = 1, promised_proposal = 2, accepted_proposal = 1, accepted_val = 9},
+    TestReceiver = test_receiver({promise, State#state.accepted_proposal, State#state.accepted_val}, self()),
+    ?assertEqual({noreply, State#state{promised_proposal = 3}}, handle_cast({prepare, TestReceiver, #prepare_message{ paxos_id = 1, proposal_id = 3 }}, State)),
+    TestResult = receive
+		     TResult -> TResult
+		 end,
+    ?assert(TestResult).
 
 -endif.

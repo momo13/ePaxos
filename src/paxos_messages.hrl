@@ -6,3 +6,4 @@
 %%%-------------------------------------------------------------------
 
 -record(prepare_message, {paxos_id, proposal_id}).
+-record(accept_message, {paxos_id, proposal_id, value}).
