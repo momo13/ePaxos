@@ -23,12 +23,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--record(state, {paxos_id, 
-		promised_proposal, 
-		accepted_proposal, 
-		accepted_val,
-		promise_fun,
-		accept_fun}).
+-record(state, { paxos_id, 
+		 promised_proposal, 
+		 accepted_proposal, 
+		 accepted_val,
+		 promise_fun,
+		 accept_fun }).
 
 %%%===================================================================
 %%% API
@@ -45,12 +45,12 @@ accept(AcceptorPID, ProposerPID, AcceptMessage) ->
 %%%===================================================================
 
 init([ PaxosID ]) ->
-    {ok, #state{paxos_id = PaxosID, 
-		promised_proposal = -1, 
-		accepted_proposal = -1, 
-		accepted_val = nil,
-	        promise_fun = fun paxos_proposer:promise/2,
-		accept_fun = fun paxos_proposer:accept/2}}.
+    {ok, #state{ paxos_id = PaxosID, 
+		 promised_proposal = -1, 
+		 accepted_proposal = -1, 
+		 accepted_val = nil,
+	         promise_fun = fun paxos_proposer:promise/2,
+		 accept_fun = fun paxos_proposer:accept/2 }}.
 
 
 handle_cast({prepare, _ProposerPID, PrepareMessage}, State) when PrepareMessage#prepare_message.paxos_id /= State#state.paxos_id ->
@@ -58,10 +58,12 @@ handle_cast({prepare, _ProposerPID, PrepareMessage}, State) when PrepareMessage#
 handle_cast({prepare, _ProposerPID, PrepareMessage}, State) when PrepareMessage#prepare_message.proposal_id =< State#state.promised_proposal ->
     {noreply, State};
 handle_cast({prepare, ProposerPID, PrepareMessage}, #state{promise_fun = PFun} = State) ->
-    Reply = {promise, State#state.accepted_proposal, State#state.accepted_val},
+    Reply = {promise, #promise_message{ paxos_id = State#state.paxos_id, 
+				        accepted_proposal = State#state.accepted_proposal, 
+					accepted_value = State#state.accepted_val} },
     %%% TODO: make permanent. Store on disk!
     PFun(ProposerPID, Reply),
-    {noreply, State#state{promised_proposal = PrepareMessage#prepare_message.proposal_id}};
+    {noreply, State#state{ promised_proposal = PrepareMessage#prepare_message.proposal_id } };
 handle_cast({accept, _ProposerPID, AcceptMessage}, State) when AcceptMessage#accept_message.paxos_id /= State#state.paxos_id ->
     %% TODO: optimize send reject
     {noreply, State};
@@ -139,7 +141,9 @@ reject_prepare_with_equal_proposal_number_test() ->
 
 promise_prepare_with_greater_proposal_number_test() ->
     State = test_state(1, 2, -1, nil),
-    TestReceiver = test_receiver({promise, State#state.accepted_proposal, State#state.accepted_val}, self()),
+    TestReceiver = test_receiver({promise, #promise_message { paxos_id = State#state.paxos_id,
+							      accepted_proposal = State#state.accepted_proposal, 
+							      accepted_value = State#state.accepted_val } }, self()),
     ?assertEqual({noreply, State#state{promised_proposal = 3}}, handle_cast({prepare, TestReceiver, #prepare_message{ paxos_id = 1, proposal_id = 3 }}, State)),
     TestResult = receive
 		     TResult -> TResult
@@ -148,7 +152,9 @@ promise_prepare_with_greater_proposal_number_test() ->
 
 promise_prepare_with_greater_proposal_number_send_accepted_value_test() ->
     State = test_state(1, 2, 1, 9), 
-    TestReceiver = test_receiver({promise, State#state.accepted_proposal, State#state.accepted_val}, self()),
+    TestReceiver = test_receiver({promise, #promise_message { paxos_id = State#state.paxos_id,
+							      accepted_proposal = State#state.accepted_proposal, 
+							      accepted_value = State#state.accepted_val } }, self()),
     ?assertEqual({noreply, State#state{promised_proposal = 3}}, handle_cast({prepare, TestReceiver, #prepare_message{ paxos_id = 1, proposal_id = 3 }}, State)),
     TestResult = receive
 		     TResult -> TResult

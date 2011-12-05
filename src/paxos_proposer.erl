@@ -17,11 +17,17 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-include("paxos_messages.hrl").
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--record(state, {paxos_id, quorum, acceptors, prepare_acks, accept_acks}).
+-record(state, { paxos_id, 
+		 quorum, 
+		 acceptors, 
+		 prepare_acks, 
+		 accept_acks }).
 
 %%%===================================================================
 %%% API
@@ -42,7 +48,11 @@ accept(ProposerID, Message) ->
 
 %% TODO add a callback to the issuing process for the outcome
 init([PaxosID, Acceptors, Quorum]) ->
-    {ok, #state{paxos_id = PaxosID, quorum = Quorum, acceptors = Acceptors, prepare_acks = [], accept_acks = []}}.
+    {ok, #state{ paxos_id = PaxosID, 
+		 quorum = Quorum, 
+		 acceptors = Acceptors, 
+		 prepare_acks = [], 
+		 accept_acks = [] } }.
 
 handle_call({propose, ProposalID}, _From, State) ->
     lists:foreach( fun(Acceptor) -> 
@@ -52,6 +62,8 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
+handle_cast({promise, PromiseMessage}, State) when PromiseMessage#promise_message.paxos_id /= State#state.paxos_id ->
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -70,6 +82,18 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 -ifdef(TEST).
+
+test_state(PaxosID, Quorum, Acceptors) ->
+    #state{ paxos_id = PaxosID, 
+		 quorum = Quorum, 
+		 acceptors = Acceptors, 
+		 prepare_acks = [], 
+		 accept_acks = [] }.
+
+
+ignore_promis_for_wrong_paxos_id_test() ->
+    State = test_state(1, 1, []),
+    ?assertEqual({noreply, State}, handle_cast({promise, #promise_message{paxos_id = 2}}, State)).
 
 -endif.
 
