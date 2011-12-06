@@ -12,4 +12,4 @@
 -record(accept_message, {paxos_id, proposal_id, value}).
 
 %% Sent from Acceptor to Proposer
--record(promise_message, {paxos_id, accepted_proposal, accepted_value}).
+-record(promise_message, {acceptor_ref, paxos_id, accepted_proposal, accepted_value}).
