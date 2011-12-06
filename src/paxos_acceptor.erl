@@ -50,7 +50,7 @@ init([ PaxosID ]) ->
 		 accepted_proposal = -1, 
 		 accepted_val = nil,
 	         promise_fun = fun paxos_proposer:promise/2,
-		 accept_fun = fun paxos_proposer:accept/2 }}.
+		 accept_fun = fun paxos_proposer:accepted/2 }}.
 
 
 handle_cast({prepare, _ProposerPID, PrepareMessage}, State) when PrepareMessage#prepare_message.paxos_id /= State#state.paxos_id ->

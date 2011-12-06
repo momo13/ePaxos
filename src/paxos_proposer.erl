@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([propose/2, promise/2, accept/2]).
+-export([propose/2, promise/2, accepted/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -23,11 +23,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--record(state, { paxos_id, 
+-record(state, { paxos_id,
 		 quorum, 
 		 acceptors, 
-		 prepare_acks, 
-		 accept_acks }).
+		 promises, 
+		 accepts,
+	         accepted }).
 
 %%%===================================================================
 %%% API
@@ -39,7 +40,7 @@ propose(ProposerPID, ProposalID) ->
 promise(ProposerID, Message) ->
     gen_server:cast(ProposerID, Message).
 
-accept(ProposerID, Message) ->
+accepted(ProposerID, Message) ->
     gen_server:cast(ProposerID, Message).
 
 %%%===================================================================
@@ -48,11 +49,12 @@ accept(ProposerID, Message) ->
 
 %% TODO add a callback to the issuing process for the outcome
 init([PaxosID, Acceptors, Quorum]) ->
-    {ok, #state{ paxos_id = PaxosID, 
+    {ok, #state{ paxos_id = PaxosID,
 		 quorum = Quorum, 
 		 acceptors = Acceptors, 
-		 prepare_acks = [], 
-		 accept_acks = [] } }.
+		 promises = [], 
+		 accepts = [],
+		 accepted = false } }.
 
 handle_call({propose, ProposalID}, _From, State) ->
     lists:foreach( fun(Acceptor) -> 
@@ -62,7 +64,10 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-handle_cast({promise, PromiseMessage}, State) when PromiseMessage#promise_message.paxos_id /= State#state.paxos_id ->
+handle_cast({promise, PromiseMessage}, State) when State#state.accepted orelse PromiseMessage#promise_message.paxos_id /= State#state.paxos_id ->
+    {noreply, State};
+handle_cast({promise, _PromiseMessage}, State) ->
+    
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -87,13 +92,18 @@ test_state(PaxosID, Quorum, Acceptors) ->
     #state{ paxos_id = PaxosID, 
 		 quorum = Quorum, 
 		 acceptors = Acceptors, 
-		 prepare_acks = [], 
-		 accept_acks = [] }.
+		 promises = [], 
+		 accepts = [] }.
 
 
 ignore_promis_for_wrong_paxos_id_test() ->
     State = test_state(1, 1, []),
     ?assertEqual({noreply, State}, handle_cast({promise, #promise_message{paxos_id = 2}}, State)).
+
+ignore_promis_if_proposal_was_already_accepted_test() ->
+    State = test_state(1, 1, []),
+    AcceptedState = State#state{accepted = true},
+    ?assertEqual({noreply, AcceptedState}, handle_cast({promise, #promise_message{paxos_id = 1}}, AcceptedState)).
 
 -endif.
 
