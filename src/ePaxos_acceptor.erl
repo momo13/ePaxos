@@ -18,7 +18,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("ePaxos_messages.hrl").
-
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -108,10 +107,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 -ifdef(TEST).
 
-equality(Message, Message) ->
-    true;
-equality(_, _) ->
-    false.
+equality(Message1, Message2) ->
+    Message1 =:= Message2.
 
 test_receiver(ExpectedMessage, Tester) ->
     spawn(fun() ->

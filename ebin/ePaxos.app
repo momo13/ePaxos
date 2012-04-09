@@ -5,5 +5,5 @@
               {applications,[kernel,stdlib]},
               {mod,{ePaxos_app,[]}},
               {env,[]},
-              {modules,[ePaxosServer,ePaxos_app,ePaxos_server,ePaxos_sup,
-                        paxos_acceptor,paxos_proposer]}]}.
+              {modules,[ePaxos_acceptor,ePaxos_app,ePaxos_proposer,
+                        ePaxos_server,ePaxos_sup]}]}.
