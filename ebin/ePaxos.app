@@ -1,9 +1,0 @@
-{application,ePaxos,
-             [{description,[]},
-              {vsn,"1"},
-              {registered,[]},
-              {applications,[kernel,stdlib]},
-              {mod,{ePaxos_app,[]}},
-              {env,[]},
-              {modules,[ePaxos_acceptor,ePaxos_app,ePaxos_proposer,
-                        ePaxos_server,ePaxos_sup]}]}.
